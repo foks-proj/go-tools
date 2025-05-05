@@ -51,15 +51,19 @@ func stable(stable bool) string {
 	return "unstable"
 }
 
-func doChangelog() error {
+func readLog() (*Config, error) {
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return err
+		return nil, err
 	}
+	return &cfg, nil
+}
+
+func doDebChangelog(cfg *Config) error {
 
 	for _, entry := range cfg.Changelog {
 		fmt.Printf("%s (%s) %s; urgency=%s\n\n",
@@ -90,10 +94,64 @@ func doChangelog() error {
 	return nil
 }
 
+func doRpmChangelog(cfg *Config) error {
+	for _, entry := range cfg.Changelog {
+		fmt.Printf("* %s %s - %s\n",
+			entry.Date.Format("Mon Jan 2 2006"),
+			cfg.Maintainer,
+			entry.Version,
+		)
+		for _, change := range entry.Changes {
+			fmt.Printf("- %s", change.Desc)
+			if len(change.Closes) > 0 {
+				var closes []string
+				for _, c := range change.Closes {
+					switch v := c.(type) {
+					case string:
+						closes = append(closes, v)
+					case int:
+						closes = append(closes, fmt.Sprintf("#%d", v))
+					}
+				}
+				closesStr := strings.Join(closes, ", ")
+				fmt.Printf("  (Closes: %s)", closesStr)
+			}
+			fmt.Println()
+		}
+		fmt.Println()
+	}
+	return nil
+
+}
+
 func main() {
-	err := doChangelog()
+	err := mainInner()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func mainInner() error {
+	if len(os.Args) != 2 {
+		return fmt.Errorf("Usage: %s <rpm|deb> < changelog.yaml", os.Args[0])
+	}
+	cfg, err := readLog()
+	if err != nil {
+		return err
+	}
+
+	switch os.Args[1] {
+	case "rpm":
+		err = doRpmChangelog(cfg)
+	case "deb":
+		err = doDebChangelog(cfg)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown format: %s\n", os.Args[1])
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
