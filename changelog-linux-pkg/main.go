@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,6 +35,16 @@ type LocalTime struct {
 	time.Time
 }
 
+func (l LocalTime) Cmp(j LocalTime) int {
+	if l.Time.Equal(j.Time) {
+		return 0
+	}
+	if l.Time.Before(j.Time) {
+		return 1
+	}
+	return -1
+}
+
 func (lt *LocalTime) UnmarshalYAML(value *yaml.Node) error {
 	// Expect format "2006-01-02 15:04:05 +0400"
 	parsed, err := time.Parse("2006-01-02 15:04:05 -0700", value.Value)
@@ -60,6 +71,9 @@ func readLog() (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+
+	slices.SortFunc(cfg.Changelog, func(a, b Entry) int { return a.Date.Cmp(b.Date) })
+
 	return &cfg, nil
 }
 
@@ -86,7 +100,7 @@ func doDebChangelog(cfg *Config) error {
 					}
 				}
 				closesStr := strings.Join(closes, ", ")
-				fmt.Printf("   Closes: %s\n", closesStr)
+				fmt.Printf("  Closes: %s\n", closesStr)
 			}
 		}
 		fmt.Printf("\n -- %s  %s\n\n", cfg.Maintainer, entry.Date.Format(time.RFC1123Z))
@@ -95,6 +109,7 @@ func doDebChangelog(cfg *Config) error {
 }
 
 func doRpmChangelog(cfg *Config) error {
+
 	for _, entry := range cfg.Changelog {
 		fmt.Printf("* %s %s - %s\n",
 			entry.Date.Format("Mon Jan 2 2006"),
